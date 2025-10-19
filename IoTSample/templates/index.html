@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RFID Admin Authentication</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        background: #000000;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #ffffff;
+        margin: 0;
+        padding: 0;
+      }
+
+      .container {
+        background: linear-gradient(145deg, #0a0a0a, #1a1a1a);
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        padding: 15px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .container::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.1),
+          transparent
+        );
+      }
+
+      .status-icon {
+        font-size: 100px;
+        margin: 10px 0;
+        transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        filter: drop-shadow(0 0 20px currentColor);
+      }
+
+      .status-icon.unlocked {
+        color: #4caf50;
+      }
+
+      .status-icon.locked {
+        color: #f44336;
+      }
+
+      .status-icon.unknown {
+        color: #ff9800;
+      }
+
+      .status-text {
+        font-size: 20px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        margin-bottom: 5px;
+        transition: color 0.3s ease;
+        text-transform: uppercase;
+      }
+
+      .status-text.unlocked {
+        color: #4caf50;
+      }
+
+      .status-text.locked {
+        color: #f44336;
+      }
+
+      .status-text.unknown {
+        color: #ff9800;
+      }
+
+      .card-info {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 8px 12px;
+        margin: 8px 0;
+        font-size: 11px;
+        color: #999;
+        backdrop-filter: blur(10px);
+      }
+
+      .card-uid {
+        font-family: "SF Mono", "Monaco", "Courier New", monospace;
+        font-weight: 600;
+        color: #ffffff;
+        font-size: 12px;
+        letter-spacing: 1px;
+      }
+
+      .instruction {
+        color: #666;
+        margin-bottom: 10px;
+        font-size: 12px;
+        font-weight: 300;
+        letter-spacing: 0.3px;
+      }
+
+      .connection-status {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 10px;
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+      }
+
+      .connection-status.connected {
+        background: rgba(76, 175, 80, 0.15);
+        color: #4caf50;
+        border: 1px solid rgba(76, 175, 80, 0.3);
+      }
+
+      .connection-status.disconnected {
+        background: rgba(244, 67, 54, 0.15);
+        color: #f44336;
+        border: 1px solid rgba(244, 67, 54, 0.3);
+      }
+
+      .connection-status i {
+        font-size: 6px;
+      }
+
+      .manual-controls {
+        margin-top: auto;
+        padding-top: 10px;
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+      }
+
+      .btn {
+        background: rgba(255, 255, 255, 0.08);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 11px;
+        transition: all 0.2s ease;
+        font-weight: 500;
+        letter-spacing: 0.3px;
+        backdrop-filter: blur(10px);
+      }
+
+      .btn:hover {
+        background: rgba(255, 255, 255, 0.15);
+        border-color: rgba(255, 255, 255, 0.3);
+        transform: translateY(-1px);
+      }
+
+      .btn:active {
+        transform: translateY(0);
+      }
+
+      .btn i {
+        margin-right: 4px;
+        font-size: 10px;
+      }
+
+      .pulse {
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(1);
+          filter: drop-shadow(0 0 20px currentColor);
+        }
+        50% {
+          transform: scale(1.05);
+          filter: drop-shadow(0 0 30px currentColor);
+        }
+      }
+
+      .scan-animation {
+        animation: scan 1.5s ease-in-out;
+      }
+
+      @keyframes scan {
+        0% {
+          transform: scale(1) rotate(0deg);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(1.1) rotate(5deg);
+          opacity: 0.9;
+        }
+        100% {
+          transform: scale(1) rotate(0deg);
+          opacity: 1;
+        }
+      }
+
+      .logs {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        padding: 8px;
+        margin-top: 8px;
+        max-height: 70px;
+        overflow-y: auto;
+        text-align: left;
+        backdrop-filter: blur(10px);
+      }
+
+      .logs::-webkit-scrollbar {
+        width: 4px;
+      }
+
+      .logs::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 4px;
+      }
+
+      .logs::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 4px;
+      }
+
+      .log-entry {
+        padding: 4px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        font-size: 10px;
+        color: #999;
+        line-height: 1.3;
+      }
+
+      .log-entry:last-child {
+        border-bottom: none;
+      }
+
+      .log-time {
+        color: #666;
+        font-size: 9px;
+        font-family: "SF Mono", "Monaco", monospace;
+      }
+
+      .main-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="connection-status" id="connectionStatus">
+        <i class="fas fa-circle"></i>
+        <span id="connectionText">...</span>
+      </div>
+
+      <div class="main-content">
+        <div class="status-icon locked" id="statusIcon">
+          <i class="fas fa-lock"></i>
+        </div>
+
+        <div class="status-text locked" id="statusText">Access Locked</div>
+
+        <div class="instruction">Scan RFID card to authenticate</div>
+
+        <div class="card-info" id="cardInfo" style="display: none">
+          <div>Card: <span class="card-uid" id="lastCardUID">-</span></div>
+          <div class="log-time" id="lastScanTime">-</div>
+        </div>
+
+        <div class="logs" id="logs">
+          <div class="log-entry">
+            <div>System ready</div>
+            <div class="log-time" id="initTime"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="manual-controls">
+        <button class="btn" onclick="manualUnlock()">
+          <i class="fas fa-unlock"></i> Unlock
+        </button>
+        <button class="btn" onclick="manualLock()">
+          <i class="fas fa-lock"></i> Lock
+        </button>
+        <button class="btn" onclick="testConnection()">
+          <i class="fas fa-wifi"></i> Test
+        </button>
+      </div>
+    </div>
+
+    <script>
+      const socket = io({
+        timeout: 10000,
+        forceNew: true,
+        transports: ["polling", "websocket"],
+        upgrade: true,
+        rememberUpgrade: true,
+      });
+      let isConnected = false;
+      let eventCounter = 0;
+
+      // DOM elements
+      const statusIcon = document.getElementById("statusIcon");
+      const statusText = document.getElementById("statusText");
+      const cardInfo = document.getElementById("cardInfo");
+      const lastCardUID = document.getElementById("lastCardUID");
+      const lastScanTime = document.getElementById("lastScanTime");
+      const connectionStatus = document.getElementById("connectionStatus");
+      const connectionText = document.getElementById("connectionText");
+      const logs = document.getElementById("logs");
+      const initTime = document.getElementById("initTime");
+
+      // Initialize timestamp
+      initTime.textContent = new Date().toLocaleTimeString();
+
+      // Socket event handlers
+      socket.on("connect", function () {
+        console.log("🔗 WebSocket connected to server");
+        isConnected = true;
+        updateConnectionStatus();
+        addLog("Connected to server", "success");
+      });
+
+      socket.on("disconnect", function (reason) {
+        console.log("🔌 WebSocket disconnected from server. Reason:", reason);
+        isConnected = false;
+        updateConnectionStatus();
+        addLog(`Disconnected: ${reason}`, "error");
+      });
+
+      socket.on("connect_error", function (error) {
+        console.log("❌ WebSocket connection error:", error);
+        addLog(`Connection error: ${error.message}`, "error");
+      });
+
+      socket.on("reconnect", function (attemptNumber) {
+        console.log(`🔄 WebSocket reconnected after ${attemptNumber} attempts`);
+        addLog(`Reconnected (attempt ${attemptNumber})`, "success");
+      });
+
+      socket.on("reconnect_attempt", function (attemptNumber) {
+        console.log(`🔄 WebSocket reconnection attempt ${attemptNumber}`);
+        addLog(`Reconnecting... (${attemptNumber})`, "info");
+      });
+
+      socket.on("status_update", function (data) {
+        console.log(
+          "📊 Received status_update event:",
+          JSON.stringify(data, null, 2)
+        );
+
+        // Always update status regardless of previous state
+        console.log(
+          `🔄 Updating status to: ${
+            data.admin_unlocked ? "UNLOCKED" : "LOCKED"
+          }`
+        );
+        updateStatus(data.admin_unlocked);
+
+        if (data.last_card_scan) {
+          // Update card info if not already updated by card_scanned event
+          updateCardInfo(data.last_card_scan);
+
+          // Only log status change for manual operations to avoid duplicate logs
+          if (data.last_card_scan.status === "manual_unlock") {
+            addLog("🔧 Manual unlock - Admin access granted", "success");
+          } else if (data.last_card_scan.status === "manual_lock") {
+            addLog("🔧 Manual lock - Access locked", "warning");
+          } else if (data.last_card_scan.status === "admin_unlock") {
+            addLog("✅ Status: Admin access granted", "success");
+          } else if (data.last_card_scan.status === "lock") {
+            addLog("� Status: Access locked", "warning");
+          } else if (data.last_card_scan.status === "unknown") {
+            addLog("❌ Status: Access denied (unknown card)", "error");
+          }
+        }
+      });
+
+      socket.on("card_scanned", function (data, callback) {
+        eventCounter++;
+        console.log(
+          `🎯 [Event #${eventCounter}] Received card_scanned event:`,
+          JSON.stringify(data, null, 2)
+        );
+
+        try {
+          // Add scan animation
+          statusIcon.classList.add("scan-animation");
+          setTimeout(() => statusIcon.classList.remove("scan-animation"), 1500);
+
+          // Update status and log based on card type
+          console.log(`🎯 Card scanned: ${data.type}, UID: ${data.uid}`);
+
+          // Update card info immediately
+          updateCardInfo({
+            uid: data.uid,
+            timestamp: data.timestamp,
+            status: data.type,
+          });
+
+          // Update the visual status based on card type
+          if (data.type === "admin_unlock") {
+            console.log("🔓 Processing unlock card");
+            updateStatus(true);
+            addLog(
+              `✅ Happy card scanned (${data.uid}) - Unlocked!`,
+              "success"
+            );
+          } else if (data.type === "lock") {
+            console.log("🔒 Processing lock card");
+            updateStatus(false);
+            addLog(
+              `🔒 Unhappy card scanned (${data.uid}) - Locked!`,
+              "warning"
+            );
+          } else {
+            console.log("❓ Processing unknown card");
+            addLog(
+              `❌ Unknown card scanned (${data.uid}) - Access denied`,
+              "error"
+            );
+          }
+
+          // Acknowledge event received
+          if (callback) callback(`card_scanned_${data.uid}_processed`);
+        } catch (error) {
+          console.error("❌ Error processing card_scanned event:", error);
+          addLog(`Error processing card scan: ${error.message}`, "error");
+        }
+      });
+
+      socket.on("card_processed", function (data, callback) {
+        eventCounter++;
+        console.log(
+          `🎯 [Event #${eventCounter}] Received card_processed event:`,
+          JSON.stringify(data, null, 2)
+        );
+
+        try {
+          // Add scan animation
+          statusIcon.classList.add("scan-animation");
+          setTimeout(() => statusIcon.classList.remove("scan-animation"), 1500);
+
+          // Update status and log based on card type
+          console.log(`🎯 Card processed: ${data.type}, UID: ${data.uid}`);
+
+          // Update card info immediately
+          updateCardInfo({
+            uid: data.uid,
+            timestamp: data.timestamp,
+            status: data.type,
+          });
+
+          // Update the visual status based on card type
+          if (data.type === "admin_unlock") {
+            console.log("🔓 Processing unlock card");
+            updateStatus(true);
+            addLog(
+              `✅ Happy card scanned (${data.uid}) - Unlocked!`,
+              "success"
+            );
+          } else if (data.type === "lock") {
+            console.log("🔒 Processing lock card");
+            updateStatus(false);
+            addLog(
+              `🔒 Unhappy card scanned (${data.uid}) - Locked!`,
+              "warning"
+            );
+          } else {
+            console.log("❓ Processing unknown card");
+            addLog(
+              `❌ Unknown card scanned (${data.uid}) - Access denied`,
+              "error"
+            );
+          }
+
+          // Acknowledge event received
+          if (callback) callback(`card_processed_${data.uid}_ack`);
+        } catch (error) {
+          console.error("❌ Error processing card_processed event:", error);
+          addLog(`Error processing card: ${error.message}`, "error");
+        }
+      });
+
+      socket.on("test_response", function (data) {
+        console.log(
+          "🧪 Test response received:",
+          JSON.stringify(data, null, 2)
+        );
+        addLog("✅ Connection test successful", "success");
+      });
+
+      socket.onAny((eventName, ...args) => {
+        console.log(
+          `🌐 [${new Date().toISOString()}] WebSocket event received: ${eventName}`,
+          args
+        );
+
+        if (!window.eventLog) window.eventLog = [];
+        window.eventLog.push({
+          timestamp: new Date().toISOString(),
+          event: eventName,
+          data: args,
+        });
+
+        // Keep only last 50 events
+        if (window.eventLog.length > 50) {
+          window.eventLog = window.eventLog.slice(-50);
+        }
+      });
+
+      // Add event loss detection
+      let lastEventTime = Date.now();
+      socket.onAny(() => {
+        lastEventTime = Date.now();
+      });
+
+      setInterval(() => {
+        const timeSinceLastEvent = Date.now() - lastEventTime;
+        if (timeSinceLastEvent > 30000 && isConnected) {
+          console.warn(
+            "⚠️ No events received for 30+ seconds, connection may be stale"
+          );
+          addLog("Warning: No events for 30+ seconds", "warning");
+        }
+      }, 5000);
+
+      function updateStatus(isUnlocked) {
+        const icon = statusIcon.querySelector("i");
+
+        if (isUnlocked) {
+          statusIcon.className = "status-icon unlocked pulse";
+          statusText.className = "status-text unlocked";
+          statusText.textContent = "Admin Access Granted";
+          icon.className = "fas fa-unlock";
+        } else {
+          statusIcon.className = "status-icon locked";
+          statusText.className = "status-text locked";
+          statusText.textContent = "Access Locked";
+          icon.className = "fas fa-lock";
+        }
+      }
+
+      function updateCardInfo(cardData) {
+        if (cardData) {
+          cardInfo.style.display = "block";
+          lastCardUID.textContent = cardData.uid;
+          lastScanTime.textContent = new Date(
+            cardData.timestamp
+          ).toLocaleTimeString();
+        }
+      }
+
+      function updateConnectionStatus() {
+        if (isConnected) {
+          const transport = socket.io.engine
+            ? socket.io.engine.transport.name
+            : "unknown";
+          connectionStatus.className = "connection-status connected";
+          connectionText.textContent = `Connected (${transport}) - Events: ${eventCounter}`;
+        } else {
+          connectionStatus.className = "connection-status disconnected";
+          connectionText.textContent = "Disconnected";
+        }
+      }
+
+      function addLog(message, type = "info") {
+        const logEntry = document.createElement("div");
+        logEntry.className = "log-entry";
+
+        const timestamp = new Date().toLocaleTimeString();
+        logEntry.innerHTML = `
+                <div>${message}</div>
+                <div class="log-time">${timestamp}</div>
+            `;
+
+        logs.insertBefore(logEntry, logs.firstChild);
+
+        // Limit to 10 log entries
+        while (logs.children.length > 10) {
+          logs.removeChild(logs.lastChild);
+        }
+      }
+
+      // Manual control functions
+      function manualUnlock() {
+        console.log("🔧 Manual unlock button clicked");
+        socket.emit("manual_unlock");
+        addLog("🔧 Manual unlock triggered", "info");
+      }
+
+      function manualLock() {
+        console.log("🔧 Manual lock button clicked");
+        socket.emit("manual_lock");
+        addLog("🔧 Manual lock triggered", "info");
+      }
+
+      // Test connectivity function
+      function testConnection() {
+        console.log("🧪 Testing WebSocket connection...");
+        socket.emit("test_connection", { timestamp: new Date().toISOString() });
+        addLog("🧪 Connection test sent", "info");
+      }
+
+      // Debug function to check event log
+      window.getEventLog = function () {
+        console.table(window.eventLog || []);
+        return window.eventLog || [];
+      };
+
+      window.getSocketInfo = function () {
+        return {
+          connected: socket.connected,
+          id: socket.id,
+          transport: socket.io.engine.transport.name,
+          eventCounter: eventCounter,
+          totalEvents: window.eventLog ? window.eventLog.length : 0,
+        };
+      };
+
+      // Debug functions for troubleshooting
+      window.getEventLog = function () {
+        console.table(window.eventLog || []);
+        return window.eventLog || [];
+      };
+
+      window.getSocketInfo = function () {
+        return {
+          connected: socket.connected,
+          id: socket.id,
+          transport: socket.io.engine
+            ? socket.io.engine.transport.name
+            : "unknown",
+          eventCounter: eventCounter,
+          totalEvents: window.eventLog ? window.eventLog.length : 0,
+        };
+      };
+
+      window.clearEventLog = function () {
+        window.eventLog = [];
+        eventCounter = 0;
+        updateConnectionStatus();
+        console.log("Event log cleared");
+      };
+
+      // Initial connection status
+      updateConnectionStatus();
+    </script>
+  </body>
+</html>
